@@ -1,10 +1,10 @@
 {
-  "name": "swagger-mcp",
-  "version": "0.0.1",
-  "private": true,
+  "name": "swagger-mcp-server-z",
+  "version": "1.0.0",
+  "private": false,
   "type": "module",
   "bin": {
-    "swagger-mcp": "index.mjs"
+    "swagger-mcp-server-z": "index.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

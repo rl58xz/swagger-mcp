@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * swagger-mcp - Swagger / OpenAPI 文档查询 MCP 服务器
+ * swagger-mcp-server-z - Swagger / OpenAPI 文档查询 MCP 服务器
  * 功能：
  *   - 从项目 Swagger 文档获取接口定义（paths + schemas）
  *   - 按路径/方法/operationId/标签搜索接口
@@ -235,7 +235,7 @@ function normalizeResponses(_op) {
 }
 
 // ---------- MCP Server ----------
-const server = new McpServer({ name: 'swagger-mcp', version: '1.0.0' }, { capabilities: { tools: {} } })
+const server = new McpServer({ name: 'swagger-mcp-server-z', version: '1.0.0' }, { capabilities: { tools: {} } })
 
 // 列出接口（支持过滤）
 server.registerTool(
