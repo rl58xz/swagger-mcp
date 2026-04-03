@@ -225,13 +225,134 @@ function normalizeResponses(_op) {
   const res = {}
   const responses = _op.responses || {}
   for (const [code, r] of Object.entries(responses)) {
+    const schema = r?.schema || r?.content?.['application/json']?.schema || r?.content?.['*/*']?.schema || null
     res[code] = {
       description: r.description || null,
-      schemaRef: r.schema && r.schema.$ref ? r.schema.$ref : null,
-      type: r.schema && r.schema.type ? r.schema.type : null,
+      schemaRef: schema && schema.$ref ? schema.$ref : null,
+      type: schema && schema.type ? schema.type : null,
+      schema: schema || null,
     }
   }
   return res
+}
+
+function getSwaggerSchemas(_swagger) {
+  const openapi3 = _swagger?.components?.schemas
+  if (openapi3 && typeof openapi3 === 'object') return openapi3
+  const swagger2 = _swagger?.definitions
+  if (swagger2 && typeof swagger2 === 'object') return swagger2
+  return {}
+}
+
+function parseSchemaRefName(_ref) {
+  if (!_ref || typeof _ref !== 'string') return null
+  const parts = _ref.split('/')
+  return parts.length ? parts[parts.length - 1] : null
+}
+
+function normalizeSchemaNode(_node) {
+  if (!_node || typeof _node !== 'object') return null
+  const out = {}
+  if (_node.title) out.title = _node.title
+  if (_node.description) out.description = _node.description
+  if (_node.type) out.type = _node.type
+  if (_node.format) out.format = _node.format
+  if (_node.enum) out.enum = _node.enum
+  if (_node.nullable != null) out.nullable = _node.nullable
+  if (_node.default != null) out.default = _node.default
+  if (_node.example != null) out.example = _node.example
+  return out
+}
+
+function resolveSchema(_swagger, _schema, _ctx = {}) {
+  const maxDepth = 12
+  const depth = _ctx.depth || 0
+  const seenRefs = _ctx.seenRefs || new Set()
+  const schemas = _ctx.schemas || getSwaggerSchemas(_swagger)
+
+  if (!_schema) return null
+  if (depth > maxDepth) return { type: 'object', description: 'Max depth reached' }
+
+  // $ref
+  if (_schema.$ref) {
+    const ref = _schema.$ref
+    const name = parseSchemaRefName(ref)
+    if (!name) return { $ref: ref }
+    if (seenRefs.has(ref)) return { $ref: ref, circular: true }
+    const target = schemas?.[name]
+    if (!target) return { $ref: ref, missing: true }
+    const nextSeen = new Set(seenRefs)
+    nextSeen.add(ref)
+    const resolved = resolveSchema(_swagger, target, { depth: depth + 1, seenRefs: nextSeen, schemas })
+    return { ...resolved, $ref: ref, refName: name }
+  }
+
+  // allOf / oneOf / anyOf
+  if (Array.isArray(_schema.allOf) && _schema.allOf.length) {
+    return {
+      ...normalizeSchemaNode(_schema),
+      allOf: _schema.allOf.map((s) => resolveSchema(_swagger, s, { depth: depth + 1, seenRefs, schemas })),
+    }
+  }
+  if (Array.isArray(_schema.oneOf) && _schema.oneOf.length) {
+    return {
+      ...normalizeSchemaNode(_schema),
+      oneOf: _schema.oneOf.map((s) => resolveSchema(_swagger, s, { depth: depth + 1, seenRefs, schemas })),
+    }
+  }
+  if (Array.isArray(_schema.anyOf) && _schema.anyOf.length) {
+    return {
+      ...normalizeSchemaNode(_schema),
+      anyOf: _schema.anyOf.map((s) => resolveSchema(_swagger, s, { depth: depth + 1, seenRefs, schemas })),
+    }
+  }
+
+  // array
+  if (_schema.type === 'array' || _schema.items) {
+    return {
+      ...normalizeSchemaNode(_schema),
+      type: 'array',
+      items: resolveSchema(_swagger, _schema.items || {}, { depth: depth + 1, seenRefs, schemas }),
+    }
+  }
+
+  // object
+  const hasProps = _schema.properties && typeof _schema.properties === 'object'
+  const hasAdditional = _schema.additionalProperties != null
+  if (_schema.type === 'object' || hasProps || hasAdditional) {
+    const props = {}
+    if (hasProps) {
+      for (const [k, v] of Object.entries(_schema.properties)) {
+        props[k] = resolveSchema(_swagger, v, { depth: depth + 1, seenRefs, schemas })
+      }
+    }
+    let additionalProperties = undefined
+    if (hasAdditional) {
+      additionalProperties =
+        _schema.additionalProperties === true
+          ? true
+          : _schema.additionalProperties === false
+            ? false
+            : resolveSchema(_swagger, _schema.additionalProperties, { depth: depth + 1, seenRefs, schemas })
+    }
+    const required = Array.isArray(_schema.required) ? _schema.required : []
+    const out = { ...normalizeSchemaNode(_schema), type: 'object', required, properties: props }
+    if (additionalProperties !== undefined) out.additionalProperties = additionalProperties
+    return out
+  }
+
+  // primitive or unknown
+  return normalizeSchemaNode(_schema) || _schema
+}
+
+function resolveOperationResponses(_swagger, _op) {
+  const base = normalizeResponses(_op)
+  const out = {}
+  for (const [code, r] of Object.entries(base)) {
+    const schemaResolved = r.schema ? resolveSchema(_swagger, r.schema, { depth: 0, seenRefs: new Set() }) : null
+    out[code] = { ...r, schemaResolved }
+  }
+  return out
 }
 
 // ---------- MCP Server ----------
@@ -313,7 +434,7 @@ server.registerTool(
               result.push({
                 ...summarizeOperation(path, method, operation),
                 parameters: normalizeParameters(operation, swagger.parameters),
-                responses: normalizeResponses(operation),
+                responses: resolveOperationResponses(swagger, operation),
               })
             }
           })
@@ -330,7 +451,7 @@ server.registerTool(
           result.push({
             ...summarizeOperation(targetPath, _args.method, op),
             parameters: normalizeParameters(op, swagger.parameters),
-            responses: normalizeResponses(op),
+            responses: resolveOperationResponses(swagger, op),
           })
           found = true
         }
@@ -344,6 +465,40 @@ server.registerTool(
         return textError('未匹配到任何接口定义，请检查 path/method 或 operationId 是否正确')
       }
       return textResult(json(result.length === 1 ? result[0] : result))
+    } catch (_err) {
+      return textError(_err.message || String(_err))
+    }
+  }
+)
+
+
+server.registerTool(
+  'swagger_resolve_schema_ref',
+  {
+    description:
+      '根据 schemaRef（如 #/components/schemas/X 或 #/definitions/X）解析并返回完整 schema 结构，递归展开 $ref。',
+    inputSchema: z.object({
+      schemaRef: z.string().describe('Schema 引用，如 #/components/schemas/ResponseDto'),
+      swaggerIndex: z.number().min(0).optional().describe('多 Swagger 源时指定索引（默认 0）'),
+      force_refresh: z.boolean().optional().describe('是否强制重新拉取 Swagger JSON'),
+    }),
+  },
+  async (_args) => {
+    try {
+      const swaggers = await fetchSwagger(_args?.force_refresh)
+      const index = _args?.swaggerIndex != null ? _args.swaggerIndex : 0
+      const swagger = swaggers[index]
+      if (!swagger) return textError(`swaggerIndex 无效: ${index}`)
+
+      const name = parseSchemaRefName(_args.schemaRef)
+      if (!name) return textError('schemaRef 无法解析，请传入形如 #/components/schemas/X 的引用')
+
+      const schemas = getSwaggerSchemas(swagger)
+      const target = schemas?.[name]
+      if (!target) return textError(`未找到 schema: ${name}`)
+
+      const resolved = resolveSchema(swagger, { $ref: _args.schemaRef }, { depth: 0, seenRefs: new Set() })
+      return textResult(json(resolved))
     } catch (_err) {
       return textError(_err.message || String(_err))
     }
