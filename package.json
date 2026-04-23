@@ -1,6 +1,6 @@
 {
   "name": "swagger-mcp-server-z",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": false,
   "type": "module",
   "bin": {
@@ -10,6 +10,10 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "axios": "^1.6.0",
     "zod": "^3.25.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+hhttps://github.com/rl58xz/swagger-mcp.git"
   }
 }
 
