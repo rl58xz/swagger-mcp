@@ -1,18 +1,18 @@
 # swagger-mcp-server-z
 
-An MCP server built on project Swagger docs, used in Cursor to **query API definitions and parameters** so agents and developers can quickly inspect endpoint descriptions, parameters, and response structure overviews.
+An MCP server built on Swagger docs, used in coding tools to **query API definitions, parameters, and response structure overviews**, so Agents / developers can quickly align on endpoint details.
 
-## 1. Install Dependencies
+## 1. Use via configuration (no install required)
 
-Run in the project root:
+This project is intended to be run via **npx**. You don't need to `npm i` it in your repo.
 
-```bash
-cd .cursor/swagger-mcp-server-z && npm install
-```
+## 2. Configure MCP (pass Swagger info via CLI args)
 
-## 2. Configure MCP in Cursor (CLI Arguments)
+Add one server entry to your tool's MCP configuration (the server key can follow your team convention, e.g. `swagger` or `swagger-mcp-server-z`), then pass Swagger URLs and auth info via CLI arguments.
 
-Add the following to `.cursor/mcp.json` (the server key can be adjusted to your team convention, for example `swagger` or `swagger-mcp-server-z`), and pass Swagger URLs and auth info via CLI arguments:
+### 2.1 Cursor example
+
+Add to `.cursor/mcp.json`:
 
 ```jsonc
 {
@@ -34,7 +34,49 @@ Add the following to `.cursor/mcp.json` (the server key can be adjusted to your 
 
 > The paths and credentials above are placeholders. Replace them with real values from your own Swagger environment, and avoid committing sensitive data (username/password/cookie) to the repository.
 
-### 2.1 Supported CLI Arguments
+### 2.2 Trae example
+
+Add this to Trae's MCP config (the structure is similar to Cursor; the key is `command: npx` + `args`):
+
+```jsonc
+{
+  "mcpServers": {
+    "swagger-mcp-server-z": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "swagger-mcp-server-z",
+        "--swaggerUrls=https://api.example.com/api/doc/swagger.json",
+        "--swaggerUser=demo_user",
+        "--swaggerPassword=demo_password"
+      ]
+    }
+  }
+}
+```
+
+### 2.3 Claude Code example
+
+Add this to Claude Code's MCP config (also launched via `npx`):
+
+```jsonc
+{
+  "mcpServers": {
+    "swagger-mcp-server-z": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "swagger-mcp-server-z",
+        "--swaggerUrls=https://api.example.com/api/doc/swagger.json",
+        "--swaggerUser=demo_user",
+        "--swaggerPassword=demo_password"
+      ]
+    }
+  }
+}
+```
+
+### 2.4 Supported CLI Arguments
 
 - `--swaggerUrls` (required): Comma-separated list of Swagger JSON URLs  
   - Example: `--swaggerUrls=https://a/swagger.json,https://b/swagger.json`
@@ -54,7 +96,7 @@ After updating, in Cursor:
 - Settings → Features → MCP → ensure `swagger-mcp-server-z` is enabled
 - Reload Window if needed
 
-## 4. Tools Provided
+## 3. Tools Provided
 
 ### 4.1 `swagger_list_operations`
 
@@ -103,7 +145,7 @@ After updating, in Cursor:
     - `schemaRef`
     - `type`
 
-## 5. Typical Usage
+## 4. Typical Usage
 
 - **Browse all `running_task`-related APIs**:
   - Call `swagger_list_operations` with: `{ "path_contains": "running_task" }`
