@@ -236,6 +236,41 @@ function normalizeResponses(_op) {
   return res
 }
 
+function normalizeRequestBody(_swagger, _op) {
+  // OpenAPI 3.x: operation.requestBody
+  if (_op?.requestBody && typeof _op.requestBody === 'object') {
+    const rb = _op.requestBody
+    return {
+      required: !!rb.required,
+      description: rb.description || null,
+      content: rb.content && typeof rb.content === 'object' ? rb.content : {},
+    }
+  }
+
+  // Swagger 2.0: body parameter (in: body)
+  const bodyParam = Array.isArray(_op?.parameters) ? _op.parameters.find((p) => p && p.in === 'body') : null
+  if (bodyParam && typeof bodyParam === 'object') {
+    const schema = bodyParam.schema || null
+    const consumes = Array.isArray(_op?.consumes)
+      ? _op.consumes
+      : Array.isArray(_swagger?.consumes)
+        ? _swagger.consumes
+        : []
+    const contentTypes = consumes.length ? consumes : ['application/json']
+    const content = {}
+    for (const ct of contentTypes) {
+      content[ct] = { schema }
+    }
+    return {
+      required: !!bodyParam.required,
+      description: bodyParam.description || null,
+      content,
+    }
+  }
+
+  return null
+}
+
 function getSwaggerSchemas(_swagger) {
   const openapi3 = _swagger?.components?.schemas
   if (openapi3 && typeof openapi3 === 'object') return openapi3
@@ -355,6 +390,26 @@ function resolveOperationResponses(_swagger, _op) {
   return out
 }
 
+function resolveOperationRequestBody(_swagger, _op) {
+  const rb = normalizeRequestBody(_swagger, _op)
+  if (!rb) return null
+
+  const content = rb.content && typeof rb.content === 'object' ? rb.content : {}
+  const schema =
+    content?.['application/json']?.schema ||
+    content?.['*/*']?.schema ||
+    Object.values(content).find((v) => v && typeof v === 'object' && v.schema)?.schema ||
+    null
+  const schemaResolved = schema ? resolveSchema(_swagger, schema, { depth: 0, seenRefs: new Set() }) : null
+
+  return {
+    ...rb,
+    schemaRef: schema && schema.$ref ? schema.$ref : null,
+    schema,
+    schemaResolved,
+  }
+}
+
 // ---------- MCP Server ----------
 const server = new McpServer({ name: 'swagger-mcp-server-z', version: '1.0.0' }, { capabilities: { tools: {} } })
 
@@ -434,6 +489,7 @@ server.registerTool(
               result.push({
                 ...summarizeOperation(path, method, operation),
                 parameters: normalizeParameters(operation, swagger.parameters),
+                requestBody: resolveOperationRequestBody(swagger, operation),
                 responses: resolveOperationResponses(swagger, operation),
               })
             }
@@ -451,6 +507,7 @@ server.registerTool(
           result.push({
             ...summarizeOperation(targetPath, _args.method, op),
             parameters: normalizeParameters(op, swagger.parameters),
+            requestBody: resolveOperationRequestBody(swagger, op),
             responses: resolveOperationResponses(swagger, op),
           })
           found = true
