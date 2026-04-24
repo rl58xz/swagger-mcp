@@ -1,5 +1,7 @@
 # swagger-mcp-server-z
 
+Repository: `https://github.com/rl58xz/swagger-mcp`
+
 An MCP server built on Swagger docs, used in coding tools to **query API definitions, parameters, and response structure overviews**, so Agents / developers can quickly align on endpoint details.
 
 ## 1. Use via configuration (no install required)
@@ -147,9 +149,44 @@ After updating, in Cursor:
 
 ## 4. Typical Usage
 
-- **Browse all `running_task`-related APIs**:
-  - Call `swagger_list_operations` with: `{ "path_contains": "running_task" }`
-- **Inspect API parameters by operationId**:
-  - Call `swagger_get_operation` with: `{ "operationId": "RunningTask_List" }`
-- **Inspect by path + method**:
-  - Call `swagger_get_operation` with: `{ "path": "/running_task", "method": "GET" }`
+These examples are written for **AI/Agent tool-calling**: pick a tool, provide JSON arguments, and use the returned text to guide code generation or API integration.
+
+- **Discover endpoints for a feature (by path substring)**:
+  - Tool: `swagger_list_operations`
+  - Args:
+
+```json
+{ "path_contains": "running_task" }
+```
+
+- **Find endpoints by tag or keyword (good for “search first, then drill down”)**:
+  - Tool: `swagger_list_operations`
+  - Args:
+
+```json
+{ "tag": "RunningTask", "summary_contains": "list" }
+```
+
+- **Get a single operation by `operationId` (preferred when you have it)**:
+  - Tool: `swagger_get_operation`
+  - Args:
+
+```json
+{ "operationId": "RunningTask_List" }
+```
+
+- **Get a single operation by `path + method` (when `operationId` is unknown)**:
+  - Tool: `swagger_get_operation`
+  - Args:
+
+```json
+{ "path": "/running_task", "method": "GET" }
+```
+
+- **Force refresh Swagger (when the API doc has changed)**:
+  - Tool: `swagger_get_operation` (also works with `swagger_list_operations`)
+  - Args:
+
+```json
+{ "operationId": "RunningTask_List", "force_refresh": true }
+```
