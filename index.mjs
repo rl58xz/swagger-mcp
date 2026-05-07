@@ -7,9 +7,7 @@
  *   - 查看单个接口的参数、请求体与响应结构概览
  *
  * 认证：
- *   - 复用技能 swagger-to-api-model 的 .env：
- *     .cursor/skills/swagger-to-api-model/.env
- *     需要配置：
+ *   - 需要配置：
  *       SWAGGER_USER=xxx
  *       SWAGGER_PASSWORD=yyy
  */
@@ -459,10 +457,10 @@ server.registerTool(
   'swagger_get_operation',
   {
     description:
-      '根据 path+method 或 operationId 查询单个接口的详细定义，包括参数列表与响应结构概览。',
+      '根据 path+method 或 operationId 查询单个接口的详细定义（参数、请求体、响应概览）。path 必须为 Swagger paths 中的完整路径字符串（含前缀斜杠），不要用路径关键字片段；若只知道关键字请先用 swagger_list_operations 查到完整 path 再调用本工具。',
     inputSchema: z
       .object({
-        path: z.string().describe('接口路径，如 /running_task').optional(),
+        path: z.string().describe('接口路径，如 /running_task（与 Swagger paths 键一致）').optional(),
         method: z
           .enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'])
           .describe('HTTP 方法')
@@ -470,10 +468,12 @@ server.registerTool(
         operationId: z.string().describe('Swagger operationId').optional(),
         force_refresh: z.boolean().optional().describe('是否强制重新拉取 Swagger JSON'),
       })
+      .passthrough()
       .refine(
         (v) =>
           (!!v.operationId && !v.path && !v.method) ||
-          (!!v.path && !!v.method && !v.operationId),
+          (!!v.path && !!v.method && !v.operationId) ||
+          (!!v.path_contains && !!v.method && !v.operationId && !v.path),
         '需要 (operationId) 或 (path + method) 其一'
       ),
   },
@@ -495,6 +495,11 @@ server.registerTool(
             }
           })
         }
+        if (!result.length) {
+          return textError(
+            `当前文档中不存在 operationId「${_args.operationId}」。请核对拼写是否与 Swagger 一致；若不确定名称，可先用 swagger_list_operations 按路径或摘要筛选。`
+          )
+        }
       } else if (_args.path && _args.method) {
         const targetPath = _args.path
         const methodKey = _args.method.toLowerCase()
@@ -514,12 +519,38 @@ server.registerTool(
         }
 
         if (!found) {
-          return textError(`未找到接口: ${_args.method} ${_args.path}`)
+          return textError(
+            `未找到 ${_args.method} ${_args.path}。path 须与 Swagger paths 中的键完全一致（含是否带前缀 /、大小写）。可用 swagger_list_operations 对照文档中的完整路径后重试。`
+          )
+        }
+      } else if (_args.path_contains && _args.method) {
+        let found = false
+
+        for (const swagger of swaggers) {
+          eachOperation(swagger, ({ path, method, operation }) => {
+            if (method !== _args.method) return
+            if (!path.includes(_args.path_contains)) return
+            result.push({
+              ...summarizeOperation(path, method, operation),
+              parameters: normalizeParameters(operation, swagger.parameters),
+              requestBody: resolveOperationRequestBody(swagger, operation),
+              responses: resolveOperationResponses(swagger, operation),
+            })
+            found = true
+          })
+        }
+
+        if (!found) {
+          return textError(
+            `未找到 ${_args.method} 且路径包含「${_args.path_contains}」的接口。可更换关键字或改用 swagger_list_operations 列出候选路径后再用 path+method 精确查询。`
+          )
         }
       }
 
       if (!result.length) {
-        return textError('未匹配到任何接口定义，请检查 path/method 或 operationId 是否正确')
+        return textError(
+          '未能匹配到接口定义。请确认参数符合工具约定（operationId 单独传入，或 path 与 method 成对且 path 为文档中的完整路径），必要时先用 swagger_list_operations 检索。'
+        )
       }
       return textResult(json(result.length === 1 ? result[0] : result))
     } catch (_err) {
@@ -527,7 +558,6 @@ server.registerTool(
     }
   }
 )
-
 
 server.registerTool(
   'swagger_resolve_schema_ref',
@@ -563,4 +593,3 @@ server.registerTool(
 )
 
 await server.connect(new StdioServerTransport())
-
