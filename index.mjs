@@ -524,25 +524,27 @@ server.registerTool(
           )
         }
       } else if (_args.path_contains && _args.method) {
+        // 兼容误传：将 path_contains 视为 path，进行严格匹配（不做 includes 模糊命中）
+        const targetPath = _args.path_contains
+        const methodKey = _args.method.toLowerCase()
         let found = false
 
         for (const swagger of swaggers) {
-          eachOperation(swagger, ({ path, method, operation }) => {
-            if (method !== _args.method) return
-            if (!path.includes(_args.path_contains)) return
-            result.push({
-              ...summarizeOperation(path, method, operation),
-              parameters: normalizeParameters(operation, swagger.parameters),
-              requestBody: resolveOperationRequestBody(swagger, operation),
-              responses: resolveOperationResponses(swagger, operation),
-            })
-            found = true
+          const item = swagger.paths?.[targetPath]
+          const op = item?.[methodKey]
+          if (!op) continue
+          result.push({
+            ...summarizeOperation(targetPath, _args.method, op),
+            parameters: normalizeParameters(op, swagger.parameters),
+            requestBody: resolveOperationRequestBody(swagger, op),
+            responses: resolveOperationResponses(swagger, op),
           })
+          found = true
         }
 
         if (!found) {
           return textError(
-            `未找到 ${_args.method} 且路径包含「${_args.path_contains}」的接口。可更换关键字或改用 swagger_list_operations 列出候选路径后再用 path+method 精确查询。`
+            `未找到 ${_args.method} ${targetPath}。请注意：这里是兼容误传参数；该值仍需为 Swagger paths 中的完整路径（非关键字片段）。建议先用 swagger_list_operations 找到完整 path 后，再用 path+method 调用。`
           )
         }
       }
