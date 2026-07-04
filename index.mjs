@@ -50,8 +50,8 @@ function loadSwaggerConfig() {
         .filter(Boolean)
     : []
 
-  const user = cli.swaggerUser || cli.user
-  const password = cli.swaggerPassword || cli.swaggerPass || cli.password
+  const user = cli.swaggerUser || cli.user || ''
+  const password = cli.swaggerPassword || cli.swaggerPass || cli.password || ''
   const cookie = cli.swaggerCookie || cli.cookie || ''
 
   if (!swaggerUrls.length) {
@@ -65,11 +65,11 @@ function loadSwaggerConfig() {
     process.exit(1)
   }
 
-  if (!user || !password) {
+  if ((user && !password) || (!user && password)) {
     process.stderr.write(
       JSON.stringify({
-        error: '缺少 swaggerUser 或 swaggerPassword 参数',
-        hint: '请通过命令行传入 swaggerUser 与 swaggerPassword，例如：node index.mjs --swaggerUser=xxx --swaggerPassword=yyy',
+        error: 'swaggerUser 与 swaggerPassword 必须同时提供',
+        hint: '公开 Swagger 可以只传 swaggerUrls；需要 Basic Auth 时同时传 swaggerUser 与 swaggerPassword',
       }) + '\n'
     )
     process.exit(1)
@@ -136,11 +136,16 @@ async function fetchSwagger(_force = false) {
   const results = []
   for (const url of swaggerUrls) {
     const referer = buildRefererFromSwaggerUrl(url)
+    const basicAuthHeader =
+      swaggerAuth.user && swaggerAuth.password
+        ? {
+            authorization: 'Basic ' + Buffer.from(`${swaggerAuth.user}:${swaggerAuth.password}`).toString('base64'),
+          }
+        : {}
     const res = await http.get(url, {
       headers: {
         accept: 'application/json,*/*',
         'accept-language': 'zh-CN,zh;q=0.9',
-        authorization: 'Basic ' + Buffer.from(`${swaggerAuth.user}:${swaggerAuth.password}`).toString('base64'),
         'cache-control': 'no-cache',
         pragma: 'no-cache',
         priority: 'u=1, i',
@@ -152,6 +157,7 @@ async function fetchSwagger(_force = false) {
         'sec-fetch-site': 'same-origin',
         // 避免在仓库中硬编码真实环境域名：根据 swagger url 动态生成 referer
         ...(referer ? { Referer: referer } : {}),
+        ...basicAuthHeader,
         ...(swaggerAuth.cookie
           ? {
               cookie: swaggerAuth.cookie,
@@ -160,7 +166,6 @@ async function fetchSwagger(_force = false) {
       },
     })
     if (res.status !== 200) {
-      console.log('res.data:', res.data)
       throw new Error(`拉取 Swagger 失败: ${url} - ${res.status} - ${JSON.stringify(res.data).slice(0, 500)}`)
     }
     results.push(res.data)

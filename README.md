@@ -10,7 +10,7 @@ This project is intended to be run via **npx**. You don't need to `npm i` it in 
 
 ## 2. Configure MCP (pass Swagger info via CLI args)
 
-Add one server entry to your tool's MCP configuration (the server key can follow your team convention, e.g. `swagger` or `swagger-mcp-server-z`), then pass Swagger URLs and auth info via CLI arguments.
+Add one server entry to your tool's MCP configuration (the server key can follow your team convention, e.g. `swagger` or `swagger-mcp-server-z`), then pass Swagger URLs and optional auth info via CLI arguments.
 
 ### 2.1 Cursor example
 
@@ -82,9 +82,28 @@ Add this to Claude Code's MCP config (also launched via `npx`):
 
 - `--swaggerUrls` (required): Comma-separated list of Swagger JSON URLs  
   - Example: `--swaggerUrls=https://a/swagger.json,https://b/swagger.json`
-- `--swaggerUser` (required): Swagger login username
-- `--swaggerPassword` (required): Swagger login password
+- `--swaggerUser` (optional): Swagger login username for Basic Auth protected specs
+- `--swaggerPassword` (optional): Swagger login password for Basic Auth protected specs
 - `--swaggerCookie` (optional): Full `cookie` string if you want to reuse an existing login session
+
+### 2.5 Public OpenAPI Example
+
+Public OpenAPI documents can omit Basic Auth arguments. For example, Xquik publishes an OpenAPI 3.1 spec that this server can inspect directly:
+
+```jsonc
+{
+  "mcpServers": {
+    "xquik-openapi": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "swagger-mcp-server-z",
+        "--swaggerUrls=https://xquik.com/openapi.json"
+      ]
+    }
+  }
+}
+```
 
 Alias compatibility (choose any one in each group):
 
